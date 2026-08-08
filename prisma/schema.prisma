@@ -1,0 +1,71 @@
+// Prisma Schema untuk Supabase (PostgreSQL)
+// GANTI file prisma/schema.prisma dengan file ini saat deploy ke Vercel
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Odp {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String   @default("")
+  kelurahan       String   @default("")
+  kecamatan       String   @default("")
+  city            String   @default("")
+  region          String   @default("")
+  province        String   @default("")
+  addressMatch    String   @default("")
+  districtName    String   @default("")
+  partnerName     String   @default("")
+  checkStatus     String   @default("")
+  capacity        Int      @default(0)
+  totalAssigned   Int      @default(0)
+  active          Int      @default(0)
+  terminate       Int      @default(0)
+  undetected      Int      @default(0)
+  availability    String   @default("")
+  availableCnt    Int      @default(0)
+  oltIp           String   @default("")
+  onuCard         String   @default("")
+  status          String   @default("")
+  locationType    String   @default("")
+  odcCode         String   @default("")
+  odcName         String   @default("")
+  odcPortNo       String   @default("")
+  rfsDate         String   @default("")
+  address         String   @default("")
+  coordinate      String   @default("")
+  latitude        Float    @default(0)
+  longitude       Float    @default(0)
+  installStatus   String   @default("")
+  usageFor        String   @default("")
+  vendor          String   @default("")
+  description     String   @default("")
+  odpOwner        String   @default("")
+  provider        String   @default("")
+  modifyDate      String   @default("")
+  modifyBy        String   @default("")
+  createDate      String   @default("")
+  createBy        String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  changeLogs OdpChangeLog[]
+}
+
+model OdpChangeLog {
+  id          String   @id @default(cuid())
+  odpId       String
+  field       String
+  oldValue    String   @default("")
+  newValue    String   @default("")
+  changedBy   String   @default("system")
+  createdAt   DateTime @default(now())
+
+  odp         Odp      @relation(fields: [odpId], references: [id], onDelete: Cascade)
+}
