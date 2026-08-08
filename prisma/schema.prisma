@@ -9,7 +9,7 @@ datasource db {
 
 model Odp {
   id              String   @id
-  code            String
+  code            String   @default("")
   name            String   @default("")
   kelurahan       String   @default("")
   kecamatan       String   @default("")
@@ -52,14 +52,17 @@ model Odp {
   createdAt       String   @default("")
   updatedAt       String   @default("")
 
-  changeLogs OdpChangeLog[]
+  changeLogs      OdpChangeLog[]
 }
 
 model OdpChangeLog {
   id          String   @id @default(cuid())
-  odpId       String
-  field       String
+  odpId       String   @default("")
+  field       String   @default("")
   oldValue    String   @default("")
   newValue    String   @default("")
-  changedBy   String   @default("system")
-  createdAt   String   @defa
+  changedBy   String   @default("")
+  createdAt   String   @default("")
+
+  odp         Odp      @relation(fields: [odpId], references: [id], onDelete: Cascade)
+}
