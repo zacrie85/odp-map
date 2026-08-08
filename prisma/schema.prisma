@@ -1,6 +1,3 @@
-// Prisma Schema untuk Supabase (PostgreSQL)
-// GANTI file prisma/schema.prisma dengan file ini saat deploy ke Vercel
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,8 +8,8 @@ datasource db {
 }
 
 model Odp {
-  id              String   @id @default(cuid())
-  code            String   @unique
+  id              String   @id
+  code            String
   name            String   @default("")
   kelurahan       String   @default("")
   kecamatan       String   @default("")
@@ -52,8 +49,8 @@ model Odp {
   modifyBy        String   @default("")
   createDate      String   @default("")
   createBy        String   @default("")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       String   @default("")
+  updatedAt       String   @default("")
 
   changeLogs OdpChangeLog[]
 }
@@ -65,7 +62,4 @@ model OdpChangeLog {
   oldValue    String   @default("")
   newValue    String   @default("")
   changedBy   String   @default("system")
-  createdAt   DateTime @default(now())
-
-  odp         Odp      @relation(fields: [odpId], references: [id], onDelete: Cascade)
-}
+  createdAt   String   @defa
