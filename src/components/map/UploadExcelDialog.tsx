@@ -4,7 +4,6 @@ import { useState, useRef } from 'react'
 import { Upload, X, FileSpreadsheet, AlertTriangle, CheckCircle2, Loader2, Database } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import * as XLSX from 'xlsx'
 
 interface UploadExcelDialogProps {
   open: boolean
@@ -12,64 +11,10 @@ interface UploadExcelDialogProps {
   onUploadComplete: () => void
 }
 
-const COLUMN_MAP: Record<string, string> = {
-  'code': 'code', 'name': 'name', 'kelurahan': 'kelurahan',
-  'kecamatan': 'kecamatan', 'city': 'city', 'region': 'region', 'province': 'province',
-  'address_match': 'addressMatch', 'addressmatch': 'addressMatch',
-  'district_name': 'districtName', 'districtname': 'districtName',
-  'partner_name': 'partnerName', 'partnername': 'partnerName',
-  'check_status': 'checkStatus', 'checkstatus': 'checkStatus',
-  'capacity': 'capacity', 'total_assigned': 'totalAssigned', 'totalassigned': 'totalAssigned',
-  'active': 'active', 'terminate': 'terminate', 'undetected': 'undetected',
-  'availability': 'availability', 'available_cnt': 'availableCnt', 'availablecnt': 'availableCnt',
-  'olt_ip': 'oltIp', 'oltip': 'oltIp', 'onu_card': 'onuCard', 'onucard': 'onuCard',
-  'status': 'status', 'location_type': 'locationType', 'locationtype': 'locationType',
-  'odc_code': 'odcCode', 'odccode': 'odcCode', 'odc_name': 'odcName', 'odcname': 'odcName',
-  'odc_port_no': 'odcPortNo', 'odcportno': 'odcPortNo',
-  'rfs_date': 'rfsDate', 'rfsdate': 'rfsDate',
-  'address': 'address', 'coordinate': 'coordinate',
-  'latitude': 'latitude', 'longitude': 'longitude',
-  'install_status': 'installStatus', 'installstatus': 'installStatus',
-  'usage_for': 'usageFor', 'usagefor': 'usageFor',
-  'vendor': 'vendor', 'description': 'description',
-  'odp_owner': 'odpOwner', 'odpowner': 'odpOwner', 'provider': 'provider',
-  'modify_date': 'modifyDate', 'modifydate': 'modifyDate',
-  'modify_by': 'modifyBy', 'modifyby': 'modifyBy',
-  'create_date': 'createDate', 'createdate': 'createDate',
-  'create_by': 'createBy', 'createby': 'createBy',
-  'created_at': 'createdAt', 'createdat': 'createdAt',
-  'updated_at': 'updatedAt', 'updatedat': 'updatedAt',
-}
-
-const INT_FIELDS = new Set(['capacity', 'totalAssigned', 'active', 'terminate', 'undetected', 'availableCnt'])
-const FLOAT_FIELDS = new Set(['latitude', 'longitude'])
-
-function parseRow(row: Record<string, any>): Record<string, any> {
-  const record: Record<string, any> = {}
-  for (const [excelCol, value] of Object.entries(row)) {
-    const key = excelCol.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
-    const dbField = COLUMN_MAP[key]
-    if (dbField && value !== undefined && value !== null && String(value).trim() !== '') {
-      if (INT_FIELDS.has(dbField)) {
-        record[dbField] = parseInt(String(value)) || 0
-      } else if (FLOAT_FIELDS.has(dbField)) {
-        record[dbField] = parseFloat(String(value)) || 0
-      } else {
-        record[dbField] = String(value).trim()
-      }
-    }
-  }
-  if (!record.id) {
-    record.id = 'imp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 10)
-  }
-  return record
-}
-
 export default function UploadExcelDialog({ open, onOpenChange, onUploadComplete }: UploadExcelDialogProps) {
   const [mode, setMode] = useState<'append' | 'replace'>('append')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [progress, setProgress] = useState<{ current: number; total: number; phase: string } | null>(null)
   const [result, setResult] = useState<any>(null)
   const [confirmReplace, setConfirmReplace] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -95,94 +40,28 @@ export default function UploadExcelDialog({ open, onOpenChange, onUploadComplete
     setResult(null)
 
     try {
-      setProgress({ current: 0, total: 0, phase: 'Membaca file Excel...' })
-      const buffer = await file.arrayBuffer()
-      const wb = XLSX.read(buffer, { type: 'array' })
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+      const formData = new FormData()
+      formData.append('file', file)
 
-      if (rows.length === 0) {
-        toast.error('File kosong, tidak ada data')
-        setUploading(false)
-        setProgress(null)
+      const res = await fetch(`/api/odp/upload?mode=${mode}`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        toast.error(data.error || 'Gagal upload')
         return
       }
 
-      setProgress({ current: 0, total: rows.length, phase: 'Memproses data...' })
-      const records = rows.map(parseRow)
-
-      const CHUNK_SIZE = 500
-      const totalChunks = Math.ceil(records.length / CHUNK_SIZE)
-      let totalInserted = 0
-
-      if (mode === 'replace') {
-        setProgress({ current: 0, total: totalChunks, phase: 'Menghapus data lama...' })
-        const delRes = await fetch('/api/odp/upload-chunk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'delete' }),
-        })
-        if (!delRes.ok) {
-          const err = await delRes.json()
-          toast.error('Gagal hapus data lama: ' + (err.error || ''))
-          setUploading(false)
-          setProgress(null)
-          return
-        }
-      }
-
-      for (let i = 0; i < records.length; i += CHUNK_SIZE) {
-        const chunk = records.slice(i, i + CHUNK_SIZE)
-        const chunkNum = Math.floor(i / CHUNK_SIZE) + 1
-        setProgress({
-          current: chunkNum,
-          total: totalChunks,
-          phase: `Mengupload chunk ${chunkNum}/${totalChunks}...`
-        })
-
-        const res = await fetch('/api/odp/upload-chunk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'insert', records: chunk }),
-        })
-
-        const data = await res.json()
-        if (!res.ok) {
-          toast.error(`Gagal di chunk ${chunkNum}: ${data.error || ''}`)
-          setUploading(false)
-          setProgress(null)
-          return
-        }
-
-        totalInserted += data.inserted || 0
-      }
-
-      setProgress({ current: totalChunks, total: totalChunks, phase: 'Menyelesaikan...' })
-      const countRes = await fetch('/api/odp/upload-chunk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'count' }),
-      })
-      const countData = await countRes.json()
-      const finalTotal = countData.total ?? 0
-
-      const resultData = {
-        totalRows: rows.length,
-        inserted: totalInserted,
-        totalInDb: finalTotal,
-        message: mode === 'replace'
-          ? `Data di-replace! ${totalInserted} data diimport. Total: ${finalTotal}`
-          : `Upload selesai! ${totalInserted} data ditambahkan. Total: ${finalTotal}`,
-      }
-
-      setResult(resultData)
-      toast.success(resultData.message)
+      setResult(data)
+      toast.success(data.message)
       onUploadComplete()
-    } catch (err: any) {
-      console.error('Upload error:', err)
-      toast.error('Gagal upload: ' + (err.message || 'Unknown error'))
+    } catch (err) {
+      toast.error('Gagal upload file')
     } finally {
       setUploading(false)
-      setProgress(null)
     }
   }
 
@@ -190,7 +69,6 @@ export default function UploadExcelDialog({ open, onOpenChange, onUploadComplete
     setFile(null)
     setResult(null)
     setConfirmReplace(false)
-    setProgress(null)
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -205,6 +83,7 @@ export default function UploadExcelDialog({ open, onOpenChange, onUploadComplete
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
       <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" style={{ zIndex: 10000 }}>
+        {/* Header */}
         <div className="flex items-center justify-between p-4 pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded bg-emerald-100 flex items-center justify-center">
@@ -221,6 +100,7 @@ export default function UploadExcelDialog({ open, onOpenChange, onUploadComplete
         </div>
 
         <div className="p-4 space-y-4">
+          {/* Mode Selection */}
           <div>
             <label className="text-xs font-medium text-slate-700 mb-2 block">Pilih Mode Upload</label>
             <div className="grid grid-cols-2 gap-2">
@@ -255,6 +135,7 @@ export default function UploadExcelDialog({ open, onOpenChange, onUploadComplete
             </div>
           </div>
 
+          {/* Warning for replace mode */}
           {mode === 'replace' && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
@@ -276,6 +157,7 @@ export default function UploadExcelDialog({ open, onOpenChange, onUploadComplete
             </div>
           )}
 
+          {/* File Input */}
           <div>
             <label className="text-xs font-medium text-slate-700 mb-1 block">Pilih File Excel</label>
             <div
@@ -309,34 +191,13 @@ export default function UploadExcelDialog({ open, onOpenChange, onUploadComplete
                 <>
                   <Upload className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                   <div className="text-xs text-slate-500">Klik untuk pilih file .xls, .xlsx, atau .csv</div>
-                  <div className="text-[10px] text-slate-400 mt-1">File besar tidak masalah, otomatis di-chunk</div>
+                  <div className="text-[10px] text-slate-400 mt-1">File besar? Pecah jadi beberapa bagian (max 4MB per file)</div>
                 </>
               )}
             </div>
           </div>
 
-          {progress && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-                <span className="text-xs font-medium text-blue-700">{progress.phase}</span>
-              </div>
-              {progress.total > 0 && (
-                <>
-                  <div className="w-full bg-blue-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${Math.min((progress.current / progress.total) * 100, 100)}%` }}
-                    />
-                  </div>
-                  <div className="text-[10px] text-blue-600 mt-1 text-right">
-                    {progress.current}/{progress.total}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
+          {/* Upload Button */}
           <Button
             className="w-full"
             disabled={!file || uploading || (mode === 'replace' && !confirmReplace)}
@@ -355,6 +216,7 @@ export default function UploadExcelDialog({ open, onOpenChange, onUploadComplete
             )}
           </Button>
 
+          {/* Result */}
           {result && (
             <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
               <div className="text-xs font-bold text-slate-700 mb-2">Hasil Upload</div>
@@ -370,13 +232,14 @@ export default function UploadExcelDialog({ open, onOpenChange, onUploadComplete
             </div>
           )}
 
+          {/* Info */}
           <div className="text-[10px] text-slate-400 space-y-0.5">
             <div className="font-semibold text-slate-500 text-xs mb-1">Ketentuan file Excel:</div>
             <ul className="list-disc list-inside space-y-0.5">
               <li>Format file harus sama dengan template ODP List asli</li>
               <li>Baris pertama = header (akan dilewati)</li>
               <li>Kolom koordinat harus format: <span className="font-mono">lat, lng</span></li>
-              <li>File besar? Tidak masalah! Otomatis di-chunk di browser</li>
+              <li>Mode &quot;Tambah/Update&quot;: kode ODP yang sama akan diupdate datanya</li>
               <li>Mode &quot;Replace&quot;: semua data lama dihapus, diganti data dari Excel</li>
             </ul>
           </div>
