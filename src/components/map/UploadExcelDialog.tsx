@@ -79,7 +79,7 @@ export default function UploadExcelDialog({ open, onOpenChange, onUploadComplete
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
       if (rows.length === 0) { toast.error('File kosong'); setUploading(false); setProgress(null); return }
       const records = rows.map(parseRow)
-      const CHUNK = 500, totalChunks = Math.ceil(records.length / CHUNK)
+      const CHUNK = 200, totalChunks = Math.ceil(records.length / CHUNK)
       let totalInserted = 0
 
       if (mode === 'replace') {
