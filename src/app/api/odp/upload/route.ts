@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import * as XLSX from 'xlsx'
 
-// Column mapping: Excel header -> DB column name
 const COLUMN_MAP: Record<string, string> = {
-  'id': 'id', 'code': 'code', 'name': 'name', 'kelurahan': 'kelurahan',
+  'code': 'code', 'name': 'name', 'kelurahan': 'kelurahan',
   'kecamatan': 'kecamatan', 'city': 'city', 'region': 'region', 'province': 'province',
   'address_match': 'addressMatch', 'addressmatch': 'addressMatch',
   'district_name': 'districtName', 'districtname': 'districtName',
@@ -23,8 +22,7 @@ const COLUMN_MAP: Record<string, string> = {
   'install_status': 'installStatus', 'installstatus': 'installStatus',
   'usage_for': 'usageFor', 'usagefor': 'usageFor',
   'vendor': 'vendor', 'description': 'description',
-  'odp_owner': 'odpOwner', 'odpowner': 'odpOwner',
-  'provider': 'provider',
+  'odp_owner': 'odpOwner', 'odpowner': 'odpOwner', 'provider': 'provider',
   'modify_date': 'modifyDate', 'modifydate': 'modifyDate',
   'modify_by': 'modifyBy', 'modifyby': 'modifyBy',
   'create_date': 'createDate', 'createdate': 'createDate',
@@ -63,7 +61,7 @@ function parseRow(row: Record<string, any>): Record<string, any> {
     }
   }
   if (!record.id) {
-    record.id = String(Date.now()) + '_' + Math.random().toString(36).substring(2, 10)
+    record.id = 'imp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 10)
   }
   return record
 }
@@ -94,24 +92,32 @@ export async function POST(req: NextRequest) {
     const file = formData.get('file') as File | null
 
     if (!file) return NextResponse.json({ error: 'File tidak ditemukan' }, { status: 400 })
-    if (!file.name.match(/\.xlsx?$/i)) return NextResponse.json({ error: 'Hanya file .xls atau .xlsx' }, { status: 400 })
 
-    // Parse Excel
+    const isExcel = file.name.match(/\.xlsx?$/i)
+    const isCsv = file.name.match(/\.csv$/i)
+    if (!isExcel && !isCsv) return NextResponse.json({ error: 'Hanya file .xls, .xlsx, atau .csv' }, { status: 400 })
+
     const buffer = Buffer.from(await file.arrayBuffer())
-    const workbook = XLSX.read(buffer, { type: 'buffer' })
-    const sheet = workbook.Sheets[workbook.SheetNames[0]]
-    const rows = XLSX.utils.sheet_to_json(sheet) as Record<string, any>[]
+    let rows: Record<string, any>[]
 
-    if (rows.length === 0) return NextResponse.json({ error: 'File Excel kosong' }, { status: 400 })
+    if (isCsv) {
+      // Parse CSV using XLSX
+      const wb = XLSX.read(buffer, { type: 'buffer' })
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+    } else {
+      const wb = XLSX.read(buffer, { type: 'buffer' })
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]])
+    }
+
+    if (rows.length === 0) return NextResponse.json({ error: 'File kosong' }, { status: 400 })
 
     const records = rows.map(parseRow)
 
     if (mode === 'replace') {
-      // Fast delete using raw SQL
       await db.$executeRawUnsafe('DELETE FROM "Odp"')
     }
 
-    // Fast bulk insert using raw SQL in batches of 2000
+    // Bulk insert using raw SQL in batches
     const BATCH = 2000
     let inserted = 0
 
@@ -127,17 +133,14 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       message: mode === 'replace'
-        ? `Data berhasil di-replace! ${inserted} data diimport. Total: ${totalCount}`
+        ? `Data di-replace! ${inserted} data diimport. Total: ${totalCount}`
         : `Upload selesai! ${inserted} data ditambahkan. Total: ${totalCount}`,
-      mode,
-      totalRows: rows.length,
-      inserted,
-      totalInDb: totalCount,
+      mode, totalRows: rows.length, inserted, totalInDb: totalCount,
     })
   } catch (error: any) {
     console.error('Upload error:', error)
     return NextResponse.json({
-      error: 'Gagal memproses file: ' + (error.message || 'Unknown error'),
+      error: 'Gagal: ' + (error.message || 'Unknown error'),
     }, { status: 500 })
   }
 }
