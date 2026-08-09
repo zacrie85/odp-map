@@ -19,6 +19,18 @@ function escapeStr(val: string): string {
   return val.replace(/'/g, "''")
 }
 
+function fixCoordinates(records: Record<string, any>[]) {
+  for (const r of records) {
+    if (r.coordinate && (!r.latitude || !r.longitude || r.latitude === 0 || r.longitude === 0)) {
+      const parts = String(r.coordinate).split(',').map(s => parseFloat(s.trim()))
+      if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        r.latitude = parts[0]
+        r.longitude = parts[1]
+      }
+    }
+  }
+}
+
 function buildInsertSql(records: Record<string, any>[]): string {
   const rows: string[] = []
   for (const r of records) {
@@ -50,6 +62,7 @@ export async function POST(req: NextRequest) {
       if (!Array.isArray(records) || records.length === 0) {
         return NextResponse.json({ error: 'Tidak ada data' }, { status: 400 })
       }
+      fixCoordinates(records)
       const SUB_BATCH = 500
       let inserted = 0
       for (let i = 0; i < records.length; i += SUB_BATCH) {
