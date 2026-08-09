@@ -24,8 +24,10 @@ function buildInsertSql(records: Record<string, any>[]): string {
   for (const r of records) {
     const vals = DB_COLUMNS.map(col => {
       const v = r[col]
-      if (v === undefined || v === null) return "''"
-      if (INT_FIELDS.has(col) || FLOAT_FIELDS.has(col)) return String(v)
+      if (INT_FIELDS.has(col) || FLOAT_FIELDS.has(col)) {
+        return (v === undefined || v === null || v === '') ? '0' : String(v)
+      }
+      if (v === undefined || v === null || v === '') return "''"
       return `'${escapeStr(String(v))}'`
     })
     rows.push(`(${vals.join(',')})`)
@@ -48,17 +50,14 @@ export async function POST(req: NextRequest) {
       if (!Array.isArray(records) || records.length === 0) {
         return NextResponse.json({ error: 'Tidak ada data' }, { status: 400 })
       }
-
-      const SUB_BATCH = 1000
+      const SUB_BATCH = 500
       let inserted = 0
-
       for (let i = 0; i < records.length; i += SUB_BATCH) {
         const batch = records.slice(i, i + SUB_BATCH)
         const sql = buildInsertSql(batch)
         await db.$executeRawUnsafe(sql)
         inserted += batch.length
       }
-
       return NextResponse.json({ success: true, inserted })
     }
 
